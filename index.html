@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>App Manager - Xóm Bạn</title>
+<style>
+:root{--bg:#040405;--card:#0e0e10;--tx:#f1f1f2;--mut:#8a8a90;--pri:#e8e8ea;--pt:#0a0a0b;--bd:#232326;--red:#ff7164;--rb:#2f1f1e;--ok:#6fcf8a;--pc:#4a6fa5;--pv:#b5645a;--ql:#5f8f5a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:dark}
+html,body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,"Segoe UI",Arial,sans-serif}*{box-sizing:border-box}
+main{max-width:960px;margin:0 auto;padding:12px}h1{font-size:20px;margin:6px 0 2px;letter-spacing:.6px}h2{font-size:16px;margin:16px 0 8px}.sub{color:var(--mut);font-size:13px}
+nav{display:flex;gap:6px;margin:10px 0;overflow-x:auto;position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);padding:6px 0;z-index:5}
+nav button{flex:0 0 auto;padding:9px 12px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:10px;font:inherit;font-weight:600}
+nav button.on{background:var(--pri);color:var(--pt);border-color:var(--pri)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:12px}
+.row,.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:8px}
+label{font-size:12px;color:var(--mut);display:block}
+input,select{width:100%;padding:9px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+.btn{padding:10px 14px;border:0;border-radius:8px;background:var(--pri);color:var(--pt);font:inherit;font-weight:700;margin-top:8px;cursor:pointer}
+.btn.s{padding:5px 9px;margin:0;font-size:12px}.btn.g{background:var(--bg);color:var(--mut);border:1px solid var(--bd)}
+.kpi div{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px}.kpi b{display:block;font-size:17px}
+.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border-bottom:1px solid var(--bd);padding:6px;text-align:left;white-space:nowrap}th{color:var(--mut);font-weight:600}
+.r{text-align:right}.neg{color:var(--red);font-weight:700}.ok{color:var(--ok);font-weight:700}
+.err{background:var(--rb);color:var(--red);border-radius:8px;padding:8px;margin-top:8px;font-weight:600}.err:empty{display:none}
+.warn{background:var(--rb);color:var(--red);border-radius:8px;padding:8px;margin-bottom:10px;font-size:13px;font-weight:600}
+.chip{display:inline-block;padding:2px 7px;border-radius:6px;color:#fff;font-size:12px;font-weight:700}.PC{background:var(--pc)}.PV{background:var(--pv)}.QL{background:var(--ql)}.TN{background:#6b5b95}
+#sched input{min-width:96px;padding:6px;font-size:12px}.note{background:var(--bg);border-radius:8px;padding:8px;font-size:12px;color:var(--mut)}
+.mbar{display:flex;gap:6px;align-items:center;margin:8px 0;flex-wrap:wrap}.mbar input{max-width:160px;padding:6px}tr[draggable=true]:active{opacity:.5}
+.top-bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.auth-box{max-width:420px;margin:40px auto;text-align:center}
+</style></head><body><main>
+<div class="top-bar">
+  <div>
+    <h1>☕ Quán Xóm Bạn</h1>
+    <div class="sub" id="st">Đang khởi tạo…</div>
+  </div>
+  <div id="user-panel"></div>
+</div>
+<div id="auth-gate" class="card auth-box" style="display:none">
+  <h2 style="margin-top:0">Đăng nhập hệ thống quán</h2>
+  <p class="sub">Đăng nhập bằng tài khoản Google để đồng bộ dữ liệu trực tiếp cho cả quán.</p>
+  <button class="btn" id="btn-google">Đăng nhập với Google</button>
+  <div class="err" id="auth-err"></div>
+</div>
+<div id="main-app" style="display:none">
+  <div class="mbar"><button class="btn s g" id="mp">‹</button><input type="month" id="mt"><button class="btn s g" id="mn">›</button><button class="btn s" id="mnew">Tháng mới</button><span class="sub" id="mbd"></span></div>
+  <nav id="nav"></nav>
+  <div id="app"></div>
+</div>
+<datalist id="ca"></datalist>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+
+<script>
+// Điền email Gmail của chủ quán vào mảng dưới đây (ví dụ: ['chuquan@gmail.com'])
+const OWNER_EMAILS = [];
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAwLynZSYiA-qkzh_Ph0Gw-xvuOIWFU5EM",
+  authDomain: "manager-f99fc.firebaseapp.com",
+  projectId: "manager-f99fc",
+  storageBucket: "manager-f99fc.firebasestorage.app",
+  messagingSenderId: "535997530947",
+  appId: "1:535997530947:web:2f8bb7760cd01e4b8a25f6",
+  measurementId: "G-CR6QVLD73L"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+const $=s=>document.querySelector(s),fmt=n=>(Math.round((+n||0)*10)/10).toLocaleString('vi-VN'),vnd=n=>Math.round(+n||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'.')+' đ',esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&','<':'<','>':'>','"':'"'}[c]));
+const iso=d=>{const x=new Date(d);return new Date(x.getTime()-x.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
+const mon=d=>{const x=new Date(d);x.setDate(x.getDate()-((x.getDay()+6)%7));return iso(x)};
+const WD=['T2','T3','T4','T5','T6','T7','CN'],pad=n=>String(n).padStart(2,'0'),dim=m=>new Date(+m.slice(0,4),+m.slice(5),0).getDate(),wdi=s=>(new Date(s+'T00:00').getDay()+6)%7,vd=s=>s.split('-').reverse().join('/');
+let S;const S0=[['Thư','PC','Trưởng ca'],['Tiến','PC','PC'],['Thiện','PV','PV'],['Hân','PC','PC'],['Trâm','PC','PC'],['Uyên','PV','PV'],['Long','PV','PV'],['Luân','PV','PV'],['T.Anh','PV','PV'],['Nghi','PV','PV'],['Gia Bảo','QL','Quản lý']].map(([n,g,t],i)=>({id:String(i),n,g,t}));S=S0;
+const LEG={'CA 1':[6+10/60,14],'CA 2':[6+10/60,10],'CA 3':[14,22.5],'CA 4':[17,22.5],'CA 5':[19,22.5],'CA GÃY':[8,12],'CA GÃY TỐI':[20,22.5]};
+const ERR=['Đi trễ','Nghỉ không phép','Sai quy trình','Sai công thức','Thái độ','Vệ sinh','Khác'];
+const CAT={'Loại sữa':['SỮA TƯƠI BALAN ĐỎ','SỮA CHUA VINAMILK (HỘP)','SỮA HẠT OATSIDE (HỘP)','KEM RICH LÙN ICE HOT (HỘP)','KEM RICH CAO ONTOP (HỘP)','CỐT DỪA LON','WHIPPING CREAM'],
+'Topping':['VẢI LON NIF (HỘP)','ĐÀO LON CONTREE (HỘP)','DỪA SỢI KHÔ (KG)','VỤN DỪA (KG)','XÍ MUỘI (KG)','TRÂN CHÂU 3Q (KG)','THẠCH DỪA DEDU (KG)','THẠCH NỔ CỦ NĂNG HỒNG JOYTO (HỘP)','HẠT ĐÁC VIỆT QUẤT','HẠT ĐÁC CHANH DÂY','ĐẬU PHỘNG RANG','HOA HỒNG KHÔ (100g)','CÂY THANH HƯƠNG (CHẬU)'],
+'Bột':['ĐƯỜNG QUE (TÚI NHỎ)','ĐƯỜNG CÁT TRẮNG (KG)','MUỐI HỒNG (KG)','BACKING SODA','BỘT SỮA DỪA (KG)','BỘT RAU CÂU DẺO (BỊCH (12g))','BỘT TRỨNG CÔ GÁI (KG)','BỘT BÉO WAO (KG)','BỘT CACAO LUAVE (KG)','MATCHA UJI K5 (KG)'],
+'Trà':['TRÀ OLONG LÀI WAO','TRÀ HIBISCUS (KG)','TRÀ OLONG RANG KHÓI ( ĐẶC BIỆT ) (KG)','TRÀ GẠO RANG (KG)','TRÀ SÂM DỨA (KG)'],
+'Cà phê':[],
+'Mứt & syrup':['SYRUP CACAO HERSHEY (CHAI)','SYRUP TRN LỰU (CHAI)','SYRUP ĐÀO TRN (CHAI)','MỨT CHUNKY LỰU (BỊCH)','MỨT NO.1 VẢI (CHAI)','BODUO VIỆT QUẤT (HỘP)','BODUO ĐÀO (HỘP)','CHUNKY XOÀI (BỊCH)','NƯỚC CỐT CHANH DÂY','CỐT TẮC','CỐT CAM','MỨT DÂU','NƯỚC ĐƯỜNG'],
+'BTP (bán thành phẩm)':['Trà Hibiscus (BTP)','Trà gạo rang (BTP)','Trà đặc biệt (BTP)','Trân châu hoàng kim (BTP)','Kem muối (BTP)','Kem trứng (BTP)']};
+const prodOpts=g=>(CATV()[g]||[]).map(p=>`<option>${esc(p)}</option>`).join('')+'<option value="__k">Khác (tự gõ tên)</option>';
+const DIN={'CA 1':[1,1,1,1,1,1,1],'CA 2':[1,1,1,1,1,1,2],'CA GÃY':[1,1,1,1,1,2,2],'CA 4':[1,1,1,1,1,1,1],'CA 3':[1,1,1,1,1,1,1],'CA 5':[0,0,0,0,0,1,1],'CA GÃY TỐI':[1,1,1,1,1,1,1]};
+const gname=()=>$('#gn').value==='__k'?val('gk'):$('#gn').value;
+$('#ca').innerHTML=Object.keys(LEG).concat('NGHỈ','OT 1','OT 2','OT 3').map(x=>`<option value="${x}">`).join('');
+const D={revenue:{},goods:{},sched:{},viol:{},cfg:{},req:{}};
+let mgr=false,tab='rev',month=iso(new Date()).slice(0,7),week=mon(new Date());const today=iso(new Date());
+const cfg=()=>({kpi:0,base:100,dinh:DIN,...(D.cfg.main||{})});
+const syncS=()=>{S=D.cfg.main?.staff?.length?D.cfg.main.staff:S0};
+async function put(c,id,v){if(!mgr&&(c==='cfg'||perm(secOf(c,v))<2))return deny();D[c][id]=v;if(c==='cfg')syncS();await db.collection(c).doc(id).set(v)}
+async function del(c,id){if(!mgr&&(c==='cfg'||perm(secOf(c,D[c][id]))<2))return deny();delete D[c][id];await db.collection(c).doc(id).delete()}
+let meId=null,meEmail='',meName='',reqSent=0;
+const PROF={},SEC={rev:'Doanh thu',sch:'Lịch ca',huy:'Hàng hủy',nhap:'Hàng nhập',ngl:'Nguyên liệu',vi:'Sai phạm',rep:'Báo cáo'},TPL={rev:2,sch:2,huy:2,nhap:2,ngl:1,vi:1,rep:0};
+const acct=()=>D.cfg.main?.acct||[];
+const TPLO={rev:2,sch:2,huy:2,nhap:2,ngl:1,vi:1,rep:1};
+const perm=k=>{if(mgr)return 2;if(k==='st'||k==='ac')return 0;const a=acct().find(x=>x.id===meId),o=D.cfg.main?.open,p=a?a.p||{}:(o===false?{}:(o||TPLO)),v=+p[k]||0;return k==='ngl'?Math.min(v,1):v};
+const secOf=(c,v)=>c==='revenue'?'rev':c==='sched'?'sch':c==='viol'?'vi':c==='goods'?v&&v.type:null;
+const deny=()=>alert('Bạn không có quyền sửa phần này. Liên hệ chủ quán.');
+const shiftM=(m,d)=>{const x=new Date(+m.slice(0,4),+m.slice(5)-1+d,1);return x.getFullYear()+'-'+pad(x.getMonth()+1)};
+const CATV=()=>D.cfg.main?.cat||CAT;
+const spRow=()=>`<div class="sp" style="display:flex;gap:6px;margin-top:6px"><input class="sr" placeholder="Lý do (vd: tiền đá)"><input class="sa" type="number" inputmode="numeric" placeholder="Số tiền" style="max-width:120px"><select class="ss" style="max-width:130px"><option value="ket">Chi két</option><option value="cn">Tiền cá nhân</option></select><button class="btn s g" data-spdel="1">✕</button></div>`;
+const spTot=()=>{const el=$('#spt');if(el)el.textContent=vnd([...document.querySelectorAll('#spl .sa')].reduce((a,i)=>a+(+i.value||0),0))};
+const TABS=[['rev','Doanh thu'],['sch','Lịch ca'],['huy','Hàng hủy'],['nhap','Hàng nhập'],['ngl','Nguyên liệu'],['vi','Sai phạm'],['rep','Báo cáo'],['st','Nhân sự'],['ac','Tài khoản']];
+const vis=()=>TABS.filter(([k])=>mgr||(k!=='st'&&k!=='ac'&&perm(k)>0));
+const ro=()=>{const A=$('#app');A.querySelectorAll('#rsave,#gsave,#vsave').forEach(b=>{const c=b.closest('.card');if(c)c.style.display='none'});A.querySelectorAll('[data-del],[data-st],[data-xadd],[data-xdel]').forEach(e=>e.style.display='none');A.querySelectorAll('[data-i],[data-ti]').forEach(e=>e.disabled=true);A.insertAdjacentHTML('afterbegin','<div class="warn" style="background:var(--bg);color:var(--mut)">👁 Bạn chỉ được xem phần này.</div>')};
+const nmOf=id=>{const a=acct().find(x=>x.id===id);return(a&&a.l)||D.req[id]?.name||PROF[id]?.name||id};
+
+function nglHTML(){const C=CATV(),own=mgr;
+ return (own?`<div class="card"><h2 style="margin-top:0">Thêm nguyên liệu</h2><div class="row"><div><label>Nhóm (chọn hoặc gõ nhóm mới)</label><input id="ngg" list="ngl-g" placeholder="Loại sữa, Topping..."></div><div><label>Tên nguyên liệu</label><input id="ngn"></div></div><datalist id="ngl-g">${Object.keys(C).map(g=>`<option value="${esc(g)}">`).join('')}</datalist><button class="btn" id="ngsave">Thêm</button><div class="err" id="err"></div></div>`:'<div class="note" style="margin-bottom:10px">🔒 Danh sách nguyên liệu do chủ quán quản lý. Bạn chỉ xem được.</div>')+Object.entries(C).map(([g,a])=>`<div class="card"><b>${esc(g)}</b> <span class="sub">(${a.length})</span>${own?` <button class="btn s g" data-ngdg="${esc(g)}">Xóa nhóm</button>`:''}<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${a.map((p,i)=>`<span style="background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:3px 8px;font-size:13px">${esc(p)}${own?`<button data-ngd="${esc(g)}|${i}" style="border:0;background:none;color:var(--red);font-weight:700;padding:0 0 0 6px">✕</button>`:''}</span>`).join('')||'<span class="sub">Chưa có nguyên liệu</span>'}</div></div>`).join('')}
+
+function acHTML(){if(!mgr)return '<div class="card sub">Chỉ chủ quán quản lý tài khoản.</div>';
+ const A=acct(),R=Object.keys(D.req).filter(i=>!A.some(a=>a.id===i));const L=['🚫','👁','✏️'],tl=['Khóa','Xem','Sửa'];
+ const OP=D.cfg.main?.open===false?null:(D.cfg.main?.open||TPLO);
+ return `<div class="card"><b>Quyền mặc định khi ai đó mở link</b> <button class="btn s ${OP?'':'g'}" data-opt="1">${OP?'Đang mở: vào là dùng luôn':'Đang khóa: phải duyệt từng người'}</button>${OP?`<div class="wrap"><table><tr>${Object.values(SEC).map(n=>`<th>${n}</th>`).join('')}</tr><tr>${Object.keys(SEC).map(k=>{const v=Math.min(+OP[k]||0,k==='ngl'?1:2);return `<td><button class="btn s ${v?'':'g'}" data-ocy="${k}">${L[v]} ${tl[v]}</button></td>`}).join('')}</tr></table></div>`:''}<div class="sub">Áp dụng cho người chưa có tên trong bảng phân quyền bên dưới. Người đã có tên thì theo quyền riêng.</div></div>
+ <div class="card"><h2 style="margin-top:0">Hướng dẫn cấp quyền</h2><div class="note">Gửi link web cho nhân viên/quản lý đăng nhập Google. Khi họ vào lần đầu, tài khoản sẽ hiện ở mục <b>Yêu cầu truy cập</b> bên dưới để bạn bấm <b>Cho phép</b> và chỉnh quyền từng phần.</div></div>
+ <div class="card"><b>Yêu cầu truy cập</b>${R.map(i=>`<div style="margin-top:6px"><b>${esc(nmOf(i))}</b> <span class="sub">(${esc(D.req[i]?.email||'')})</span> <button class="btn s" data-aca="${i}">Cho phép</button> <button class="btn s g" data-acx="${i}">Bỏ</button></div>`).join('')||'<div class="sub">Không có yêu cầu mới.</div>'}</div>
+ <div class="card wrap"><b>Phân quyền từng phần</b> <span class="sub">Bấm vào ô để đổi: 🚫 Khóa → 👁 Xem → ✏️ Sửa</span><table><tr><th>Tài khoản</th>${Object.values(SEC).map(n=>`<th>${n}</th>`).join('')}<th></th></tr>${A.map(a=>`<tr><td>${esc(nmOf(a.id))}<br><input data-al="${a.id}" value="${esc(a.l||'')}" placeholder="Nhãn (vd: Trưởng ca Hân)" style="min-width:150px;padding:5px"></td>${Object.keys(SEC).map(k=>{const v=Math.min(+(a.p||{})[k]||0,k==='ngl'?1:2);return `<td><button class="btn s ${v?'':'g'}" data-pc="${a.id}|${k}">${L[v]} ${tl[v]}</button></td>`}).join('')}<td><button class="btn s g" data-acd="${a.id}">Xóa</button></td></tr>`).join('')||'<tr><td colspan="9" class="sub">Chưa có tài khoản nào.</td></tr>'}</table></div><div class="sub">Khóa là ẩn hẳn tab đó, Xem là chỉ đọc, Sửa là được nhập liệu. Nguyên liệu chỉ có Khóa hoặc Xem. Nhân sự và Tài khoản chỉ chủ quán thấy.</div>`}
+
+const its=r=>r.items||(+r.spend?[{r:r.reason||'',a:+r.spend,s:'ket'}]:[]),kt=r=>its(r).filter(x=>x.s!=='cn').reduce((a,x)=>a+(+x.a||0),0),cnv=r=>its(r).filter(x=>x.s==='cn').reduce((a,x)=>a+(+x.a||0),0),itxt=r=>its(r).map(x=>esc(x.r)+' '+vnd(x.a)+(x.s==='cn'?' (cá nhân)':' (két)')).join('; ');
+const dfv=r=>(+r.cash||0)+(+r.bank||0)+kt(r)-(+r.total||0);
+const showErr=l=>{$('#err').innerHTML=l.map(esc).join('<br>')};const val=id=>$('#'+id).value.trim();
+
+const tm=(h,m)=>+h+(+m||0)/60;
+function ivs(t){return String(t||'').toUpperCase().split('&').map(p=>p.trim()).filter(p=>p&&p!=='NGHỈ').map(p=>{const q=p.match(/^OT\s*(\d+(?:[.,]\d+)?)\s*H?$/);if(q)return{p,iv:null,ot:parseFloat(q[1].replace(',','.'))};if(LEG[p])return{p,iv:LEG[p]};const m=p.match(/(\d{1,2})(?::(\d\d))?\s*H?\s*-\s*(\d{1,2})(?::(\d\d))?\s*H?/);return{p,iv:m?[tm(m[1],m[2]),tm(m[3],m[4])+(tm(m[3],m[4])<tm(m[1],m[2])?24:0)]:null}})}
+const hours=t=>ivs(t).reduce((a,o)=>a+(o.iv?o.iv[1]-o.iv[0]:0)+(o.ot||0),0),otH=t=>ivs(t).reduce((a,o)=>a+(o.ot||0)+(o.p.startsWith('OT')&&o.iv?o.iv[1]-o.iv[0]:0),0),covers=(t,x)=>ivs(t).some(o=>o.iv&&o.iv[0]<=x&&x<o.iv[1]);
+const cell=(i,k)=>(D.sched[week]?.cells||{})[S[i].id+'_'+k]||'';
+const cellx=(i,k)=>(D.sched[week]?.cells||{})[S[i].id+'_'+k+'x']||'';
+const cx=(v,id,k)=>{const c=v.cells||{},m=c[id+'_'+k]||'',x=c[id+'_'+k+'x']||'';return x?(m?m+' & ':'')+'OT '+x:m};
+const full=(i,k)=>{const m=cell(i,k),x=cellx(i,k);return x?(m?m+' & ':'')+'OT '+x:m};
+const xui=(i,k)=>cellx(i,k)?`<div style="display:flex;gap:2px;margin-top:3px">${[0,1].map(n=>`<input type="time" data-ti="${i}|${k}" value="${(cellx(i,k).split(' - ')[n]||'').trim()}" style="min-width:0;width:50%;padding:4px;font-size:11px">`).join('')}<button class="btn s g" data-xdel="${i}|${k}">✕</button></div>`:`<button class="btn s g" data-xadd="${i}|${k}" style="margin-top:3px;font-size:11px">+ ca</button>`;
+function pos(k){const out={},pcs=[];S.forEach((s,i)=>{const t=cell(i,k);if(!ivs(t).length){out[i]='';return}if(s.g==='PC')pcs.push({i,t});else out[i]=s.g});
+ const pick=(x,nm)=>{let b=null;pcs.forEach(c=>{if(covers(c.t,x)){const q=(ivs(c.t).some(o=>o.p===nm)?0:100)+c.i;if(!b||q<b.q)b={q,i:c.i}}});return b&&b.i};const m=pick(9,'CA 1'),e=pick(17,'CA 3');
+ pcs.forEach(c=>out[c.i]=(c.i===m||c.i===e||pcs.length===1)?'PC & TN':'PC');return out}
+const chip=p=>p?`<span class="chip ${p==='QL'?'QL':p==='PV'?'PV':p.includes('TN')?'TN':'PC'}">${p}</span>`:'';
+function schedHTML(){const days=[...Array(7)].map((_,k)=>{const d=new Date(week+'T00:00');d.setDate(d.getDate()+k);return d}),P=days.map((_,k)=>pos(k));
+ const hd=days.map((d,k)=>`<th>${WD[k]}<br><span class="sub">${d.getDate()}/${d.getMonth()+1}</span></th>`).join('');
+ return `<div class="card"><label>Tuần bắt đầu từ (Thứ 2)</label><input type="date" id="wk" value="${week}" style="max-width:200px">${(()=>{const V=S.map((s,i)=>i).filter(i=>!(S[i].x&&!days.some((_,k)=>cell(i,k)))),hd=days.map((d,k)=>WD[k]+' '+d.getDate()+'/'+(d.getMonth()+1)),a=days[0],b=days[6];return xp('sch','Lich-lam-tuan-'+week,[['LỊCH LÀM TUẦN '+a.getDate()+'/'+(a.getMonth()+1)+' - '+b.getDate()+'/'+(b.getMonth()+1)+'/'+b.getFullYear()],[],['Ca làm',...hd],...V.map(i=>[S[i].n,...days.map((_,k)=>full(i,k))]),[],['Vị trí',...hd],...V.map(i=>[S[i].n,...days.map((_,k)=>P[k][i])])])})()}<div class="note" style="margin-top:8px">Chọn ca có sẵn hoặc gõ giờ tự do (12:00 - 20:00), ca ghép dùng dấu &. Thêm ca: bấm + ca dưới ô, tự chọn giờ bắt đầu và kết thúc (tính là giờ OT). Vị trí tự xếp: Ca 1 và Ca 3 là PC & TN, nếu không có thì pha chế đang làm lúc 9:00 và 17:00.</div></div>
+ <div class="card wrap" id="sched"><table><tr><th>Ca làm</th>${hd}<th>Giờ/tuần</th></tr>${S.map((s,i)=>s.x&&!days.some((_,k)=>cell(i,k))?'':`<tr><th>${s.n}<br><span class="sub">${s.t}</span></th>${days.map((_,k)=>`<td><input list="ca" data-i="${i}" data-k="${k}" value="${esc(cell(i,k))}">${xui(i,k)}</td>`).join('')}<td class="r"><b>${fmt(days.reduce((a,_,k)=>a+hours(full(i,k)),0))}</b>${(()=>{const q=days.reduce((a,_,k)=>a+otH(full(i,k)),0);return q?`<br><span class="sub">OT ${fmt(q)}</span>`:''})()}</td></tr>`).join('')}</table></div>
+ <h2>Vị trí tự động</h2><div class="card wrap"><table><tr><th></th>${hd}</tr>${S.map((s,i)=>s.x&&!days.some((_,k)=>cell(i,k))?'':`<tr><th>${s.n}</th>${days.map((_,k)=>`<td>${chip(P[k][i])}</td>`).join('')}</tr>`).join('')}</table></div>`}
+
+function missingDays(m){const n=dim(m),cur=today.slice(0,7),lim=m<cur?n:m===cur?+today.slice(8):0,o=[];for(let d=1;d<=lim;d++)if(!D.revenue[m+'-'+pad(d)])o.push(d);return o}
+function revHTML(){const rows=Object.values(D.revenue).filter(r=>r.date.startsWith(month)).sort((a,b)=>b.date.localeCompare(a.date)),sum=k=>rows.reduce((a,r)=>a+(+r[k]||0),0),dt=rows.reduce((a,r)=>a+dfv(r),0),ms=missingDays(month);
+ const inp=(id,l,t='number')=>`<div><label>${l}</label><input id="${id}" type="${t}" inputmode="numeric">${t==='number'?'<div class="sub pv"></div>':''}</div>`;
+ return `<div class="card"><h2 style="margin-top:0">Nhập doanh thu ngày</h2><div class="row"><div><label>Ngày</label><input type="date" id="rd" value="${today}"></div>${inp('rt','Tổng doanh thu (đ)')}<div><label>Số bill</label><input id="rbl" type="number" inputmode="numeric"></div>${inp('rc','Tiền mặt (đ)')}${inp('rb','Chuyển khoản (đ)')}<div style="grid-column:1/-1"><div style="display:flex;justify-content:space-between;align-items:center"><label>Các khoản chi (lý do, số tiền, chi từ đâu)</label><button class="btn s" data-spadd="1" title="Thêm khoản chi">+</button></div><div id="spl">${spRow()}</div><div class="sub">Tổng chi: <b id="spt">0 đ</b></div></div></div><button class="btn" id="rsave">Lưu</button><div class="err" id="err"></div></div>
+ <label>Xem tháng</label><input type="month" id="mo" value="${month}" style="max-width:200px;margin-bottom:8px">
+ ${xp('rev','Doanh-thu-'+month,[['Ngày','Tổng doanh thu','Số bill','AOV','Tiền mặt','Chuyển khoản','Chi két','Chi cá nhân','Chênh lệch','Chi tiết chi'],...rows.slice().reverse().map(r=>[vd(r.date),r.total,r.bills||'',r.bills?Math.round(r.total/r.bills):'',r.cash,r.bank,kt(r),cnv(r),dfv(r),its(r).map(x=>x.r+' '+x.a+(x.s==='cn'?' (cá nhân)':' (két)')).join('; ')]),['TỔNG',sum('total'),sum('bills'),sum('bills')?Math.round(sum('total')/sum('bills')):'',sum('cash'),sum('bank'),rows.reduce((a,r)=>a+kt(r),0),rows.reduce((a,r)=>a+cnv(r),0),dt,'']])}
+ ${ms.length?`<div class="warn">⚠ Chưa nhập doanh thu các ngày: ${ms.map(d=>pad(d)+'/'+month.slice(5)).join(', ')}</div>`:''}
+ <div class="kpi"><div>Doanh thu<b>${vnd(sum('total'))}</b></div><div>Tiền mặt<b>${vnd(sum('cash'))}</b></div><div>Chuyển khoản<b>${vnd(sum('bank'))}</b></div><div>Chi két<b>${vnd(rows.reduce((a,r)=>a+kt(r),0))}</b></div><div>Chi cá nhân<b>${vnd(rows.reduce((a,r)=>a+cnv(r),0))}</b></div><div>Chênh lệch<b class="${dt?'neg':''}">${vnd(dt)}</b></div><div>Số bill<b>${fmt(sum('bills'))}</b></div><div>AOV (doanh thu / bill)<b>${vnd(sum('bills')?sum('total')/sum('bills'):0)}</b></div></div>
+ <div class="card wrap" style="margin-top:12px"><table><tr><th>Ngày</th><th class="r">Doanh thu</th><th class="r">Số bill</th><th class="r">AOV</th><th class="r">Tiền mặt</th><th class="r">CK</th><th class="r">Chi két</th><th class="r">Chi cá nhân</th><th class="r">Lệch</th><th>Chi tiết các khoản chi</th><th></th></tr>${rows.map(r=>`<tr><td>${vd(r.date)}</td><td class="r">${vnd(r.total)}</td><td class="r">${r.bills?fmt(r.bills):'-'}</td><td class="r">${r.bills?vnd(r.total/r.bills):'-'}</td><td class="r">${vnd(r.cash)}</td><td class="r">${vnd(r.bank)}</td><td class="r">${vnd(kt(r))}</td><td class="r">${vnd(cnv(r))}</td><td class="r ${dfv(r)?'neg':''}">${vnd(dfv(r))}</td><td style="white-space:normal;min-width:190px">${itxt(r)}</td><td>${mgr?`<button class="btn s g" data-del="revenue|${r.date}">Xóa</button>`:''}</td></tr>`).join('')||'<tr><td colspan="8" class="sub">Chưa có dữ liệu tháng này.</td></tr>'}</table></div><div class="sub">Chênh lệch = (Tiền mặt + Chuyển khoản + Chi két) - Tổng doanh thu. Tiền cá nhân không tính vào chênh lệch. Lệch khác 0 sẽ báo đỏ.</div>`}
+
+const topG=(type,m)=>{const t={};Object.values(D.goods).filter(v=>v.type===type&&v.date.startsWith(m)).forEach(v=>{const k=v.name.trim().toLowerCase();t[k]=t[k]||{n:v.name,u:v.unit,q:0,a:0};t[k].q+=+v.qty||0;t[k].a+=+v.amount||0});return Object.values(t).sort((a,b)=>type==='nhap'?b.a-a.a:b.q-a.q).slice(0,3)};
+function gdHTML(type){const nh=type==='nhap',all=Object.entries(D.goods).map(([id,v])=>({id,...v})).filter(v=>v.type===type&&v.date.startsWith(month)).sort((a,b)=>b.date.localeCompare(a.date)),pend=all.filter(v=>v.status!=='Đã nhập').length,top=topG(type,month);
+ return `<div class="card"><h2 style="margin-top:0">${nh?'Nhập hàng':'Hủy hàng'}</h2><div class="row"><div><label>Ngày</label><input type="date" id="gd" value="${today}"></div><div><label>Nhóm nguyên liệu</label><select id="gg">${Object.keys(CATV()).map(g=>`<option>${g}</option>`).join('')}</select></div><div><label>Tên sản phẩm</label><select id="gn">${prodOpts(Object.keys(CATV())[0])}</select><input id="gk" placeholder="Gõ tên sản phẩm" style="display:none;margin-top:6px"></div><div><label>Số lượng</label><input type="number" id="gq" inputmode="decimal"></div><div><label>Đơn vị</label><select id="gu">${['g','ml','kg','lít','cái','hộp','chai','bịch'].map(u=>`<option>${u}</option>`).join('')}</select></div>${nh?'<div><label>Nhà cung cấp</label><input id="gs"></div><div><label>Số tiền nhập (đ)</label><input type="number" id="ga" inputmode="numeric"><div class="sub pv"></div></div>':'<div><label>Lý do</label><input id="gr"></div>'}</div><button class="btn" id="gsave">Lưu</button><div class="err" id="err"></div></div>
+ <label>Xem tháng</label><input type="month" id="mo" value="${month}" style="max-width:200px;margin-bottom:8px">
+ ${xp('gd',(nh?'Hang-nhap-':'Hang-huy-')+month,[['Ngày','Nhóm','Sản phẩm','Số lượng','Đơn vị',nh?'Nhà cung cấp':'Lý do',...(nh?['Số tiền (đ)']:[]),'Trạng thái'],...all.slice().reverse().map(v=>[vd(v.date),v.grp||'',v.name,v.qty,v.unit,nh?v.supplier:v.reason,...(nh?[v.amount]:[]),v.status==='Đã nhập'?'Đã nhập':'Chờ xác nhận'])])}
+ <div class="kpi"><div>Số dòng<b>${all.length}</b></div><div>Chờ quản lý xác nhận<b class="${pend?'neg':''}">${pend}</b></div>${nh?`<div>Tổng tiền nhập<b>${vnd(all.reduce((a,v)=>a+(+v.amount||0),0))}</b></div>`:''}</div>
+ <h2>${nh?'Top 3 nhập nhiều tiền nhất':'Top 3 hủy nhiều nhất'}</h2><div class="card">${top.map((t,i)=>`${i+1}. <b>${esc(t.n)}</b> - ${nh?vnd(t.a):fmt(t.q)+' '+esc(t.u)}`).join('<br>')||'<span class="sub">Chưa có dữ liệu.</span>'}</div>
+ <div class="card wrap"><table><tr><th>Ngày</th><th>Nhóm</th><th>Sản phẩm</th><th class="r">SL</th>${nh?'<th>NCC</th><th class="r">Số tiền</th>':'<th>Lý do</th>'}<th>Trạng thái</th></tr>${all.map(v=>{const lk=v.status==='Đã nhập';return `<tr><td>${vd(v.date)}</td><td>${esc(v.grp||'')}</td><td>${esc(v.name)}</td><td class="r">${fmt(v.qty)} ${esc(v.unit)}</td>${nh?`<td>${esc(v.supplier)}</td><td class="r">${vnd(v.amount)}</td>`:`<td>${esc(v.reason)}</td>`}<td>${lk?'🔒 Đã nhập (khóa)':'<span class="neg">Chờ xác nhận</span>'} ${mgr?`<button class="btn s ${lk?'g':''}" data-st="${v.id}">${lk?'Mở khóa':'Xác nhận nhập'}</button>`:''} ${!lk?`<button class="btn s g" data-del="goods|${v.id}">Xóa</button>`:''}</td></tr>`}).join('')||'<tr><td colspan="6" class="sub">Chưa có dữ liệu.</td></tr>'}</table></div><div class="sub">Quản lý xác nhận xong thì dòng bị khóa, không xóa được. Mở khóa mới sửa lại.</div>`}
+
+function pen(m){const o={};S.forEach(s=>o[s.n]={cnt:0,bb:0,minus:0});const rows=Object.entries(D.viol).map(([id,v])=>({id,...v})).filter(v=>v.date.startsWith(m)).sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));
+ rows.forEach(v=>{const p=o[v.name]||(o[v.name]={cnt:0,bb:0,minus:0});p.cnt++;v.nth=p.cnt;v.bb=p.cnt%3===0;v.minus=3+(v.bb?10:0);p.minus+=v.minus;if(v.bb)p.bb++});return{o,rows}}
+function viHTML(){const{rows}=pen(month);
+ return `<div class="card"><h2 style="margin-top:0">Ghi sai phạm</h2><div class="row"><div><label>Ngày</label><input type="date" id="vd" value="${today}"></div><div><label>Nhân viên</label><select id="vn">${S.filter(s=>!s.x).map(s=>`<option>${s.n}</option>`).join('')}</select></div><div><label>Lỗi sai phạm</label><select id="ve">${ERR.map(e=>`<option>${e}</option>`).join('')}</select></div><div><label>Ghi chú</label><input id="vt"></div></div><button class="btn" id="vsave">Lưu</button><div class="err" id="err"></div><div class="note" style="margin-top:8px">Mỗi lần trừ 3 điểm. Đủ 3 lần của một người lập 1 biên bản, trừ thêm 10 điểm.</div></div>
+ <label>Xem tháng</label><input type="month" id="mo" value="${month}" style="max-width:200px;margin-bottom:8px">
+ ${xp('vi','Sai-pham-'+month,[['Ngày','Nhân viên','Lỗi','Lần thứ','Điểm trừ','Biên bản','Ghi chú'],...rows.map(v=>[vd(v.date),v.name,v.err,v.nth,v.minus,v.bb?'BIÊN BẢN':'',v.note||''])])}
+ <div class="card wrap"><table><tr><th>Ngày</th><th>Nhân viên</th><th>Lỗi</th><th class="r">Lần thứ</th><th class="r">Trừ</th><th>Biên bản</th><th>Ghi chú</th><th></th></tr>${rows.slice().reverse().map(v=>`<tr><td>${vd(v.date)}</td><td>${esc(v.name)}</td><td>${esc(v.err)}</td><td class="r">${v.nth}</td><td class="r neg">-${v.minus}</td><td>${v.bb?'<span class="neg">BIÊN BẢN</span>':''}</td><td>${esc(v.note)}</td><td>${mgr?`<button class="btn s g" data-del="viol|${v.id}">Xóa</button>`:''}</td></tr>`).join('')||'<tr><td colspan="8" class="sub">Chưa có sai phạm tháng này.</td></tr>'}</table></div>`}
+
+function repHTML(){const c=cfg(),n=dim(month),by={};Object.values(D.revenue).forEach(r=>{if(r.date.startsWith(month))by[r.date]=r});const rows=Object.values(by),sum=k=>rows.reduce((a,r)=>a+(+r[k]||0),0),ms=missingDays(month),fail=Array(7).fill(0),cnt=Array(7).fill(0);
+ let ok=0,bad=0;const dl=[];for(let d=1;d<=n;d++){const s=month+'-'+pad(d),r=by[s];if(!r)continue;const w=wdi(s),hit=!c.kpi||+r.total>=c.kpi;cnt[w]++;hit?ok++:(bad++,fail[w]++);dl.push(`<tr><td>${vd(s)} (${WD[w]})</td><td class="r">${vnd(r.total)}</td><td class="r">${vnd((+r.total||0)-c.kpi)}</td><td class="${hit?'ok':'neg'}">${hit?'Đạt':'Không đạt'}</td><td class="r">${r.bills?fmt(r.bills):'-'}</td><td class="r">${r.bills?vnd(r.total/r.bills):'-'}</td></tr>`)}
+ const H=S.map(()=>0),HO=[];Object.entries(D.sched).forEach(([w,v])=>{for(let k=0;k<7;k++){const d=new Date(w+'T00:00');d.setDate(d.getDate()+k);if(iso(d).startsWith(month))S.forEach((_,i)=>(H[i]+=hours(cx(v,S[i].id,k)),HO[i]=(HO[i]||0)+otH(cx(v,S[i].id,k))))}});const hc=k=>LEG[k][1]-LEG[k][0],nd=[0,1,2,3,4,5,6].map(w=>Object.keys(DIN).reduce((a,k)=>a+((c.dinh[k]||[])[w]||0)*hc(k),0)),dc=Array(7).fill(0),dh=Array(7).fill(0);
+ for(let d=1;d<=n;d++)dc[wdi(month+'-'+pad(d))]++;
+ Object.entries(D.sched).forEach(([w,v])=>{for(let k=0;k<7;k++){const dd=new Date(w+'T00:00');dd.setDate(dd.getDate()+k);if(iso(dd).startsWith(month))S.forEach((s,i)=>{if(s.g!=='QL')dh[k]+=hours(cx(v,S[i].id,k))})}});
+ const {o}=pen(month),{rows:vr}=pen(month),norm=nd.reduce((a,x,w)=>a+x*dc[w],0),TH=dh.reduce((a,b)=>a+b,0),TD=TH-norm,TS=TD>0.05?'Vượt':TD<-0.05?'Thấp hơn':'Đúng định biên';
+ const nh=Object.values(D.goods).filter(v=>v.type==='nhap'&&v.date.startsWith(month));
+ const tl=(t,nhp)=>t.map((x,i)=>`${i+1}. <b>${esc(x.n)}</b> - ${nhp?vnd(x.a):fmt(x.q)+' '+esc(x.u)}`).join('<br>')||'<span class="sub">Chưa có.</span>';
+ return `<label>Báo cáo tháng</label><input type="month" id="mo" value="${month}" style="max-width:200px;margin-bottom:8px">${xp('rep','Bao-cao-'+month,[['BÁO CÁO THÁNG '+month.slice(5)+'/'+month.slice(0,4)],[],['DOANH THU'],['Tổng doanh thu',sum('total')],['Tiền mặt',sum('cash')],['Chuyển khoản',sum('bank')],['Chi két',rows.reduce((a,r)=>a+kt(r),0)],['Chi cá nhân',rows.reduce((a,r)=>a+cnv(r),0)],['Doanh thu - Chi',sum('total')-sum('spend')],['Tổng số bill',sum('bills')],['AOV',sum('bills')?Math.round(sum('total')/sum('bills')):''],['KPI 1 ngày',c.kpi],['Số ngày đạt KPI',ok],['Số ngày không đạt KPI',bad],[],['Ngày','Doanh thu','Số bill','AOV','Kết quả KPI'],...Object.keys(by).sort().map(d=>{const r=by[d];return [vd(d),r.total,r.bills||'',r.bills?Math.round(r.total/r.bills):'',!c.kpi||+r.total>=c.kpi?'Đạt':'Không đạt']}),[],['GIỜ LÀM'],['Nhân viên','Giờ theo lịch','Trong đó OT'],...S.map((s,i)=>s.x&&!H[i]?null:[s.n+(s.g==='QL'?' (quản lý, không tính)':''),Math.round(H[i]*10)/10,Math.round((HO[i]||0)*10)/10]).filter(Boolean),['Tổng giờ (không tính quản lý)',Math.round(TH*10)/10],['Định biên theo tháng',Math.round(norm*10)/10],['Chênh lệch',Math.round(TD*10)/10,TS],[],['Thứ','Số ngày','Định biên','Giờ xếp','Chênh lệch'],...WD.map((w,k)=>[w,dc[k],Math.round(nd[k]*dc[k]*10)/10,Math.round(dh[k]*10)/10,Math.round((dh[k]-nd[k]*dc[k])*10)/10]),[],['ĐIỂM NHÂN SỰ'],['Nhân viên','Số lần sai phạm','Biên bản','Điểm trừ','Điểm cuối'],...S.map(s=>{const p=o[s.n]||{cnt:0,bb:0,minus:0};return s.x&&!p.cnt?null:[s.n,p.cnt,p.bb,p.minus,c.base-p.minus]}).filter(Boolean),[],['LỖI SAI PHẠM'],['Ngày','Nhân viên','Lỗi','Ghi chú'],...vr.map(v=>[vd(v.date),v.name,v.err+(v.bb?' (biên bản)':''),v.note||'']),[],['HÀNG HỦY NHIỀU NHẤT'],...topG('huy',month).map((x,i)=>[i+1,x.n,x.q,x.u]),[],['HÀNG NHẬP NHIỀU NHẤT'],...topG('nhap',month).map((x,i)=>[i+1,x.n,x.a]),['Tổng tiền hàng nhập',nh.reduce((a,v)=>a+(+v.amount||0),0)]])}
+ <div class="card"><div class="row"><div><label>KPI doanh thu 1 ngày (đ)</label><input type="number" id="ck" inputmode="numeric" value="${c.kpi||''}" placeholder="Nhập KPI"><div class="sub pv">${c.kpi?vnd(c.kpi):''}</div></div></div><div class="sub" style="margin-top:6px">Nhập xong bấm ra ngoài ô là tự lưu và tính lại báo cáo.</div></div><div class="card wrap"><b>Định biên nhân sự theo ca (số người mỗi ngày)</b><table><tr><th>Ca</th><th>Giờ/người</th>${WD.map(w=>`<th>${w}</th>`).join('')}</tr>${Object.keys(DIN).map(k=>`<tr><td>${k}</td><td class="r">${fmt(hc(k))}</td>${WD.map((_,w)=>`<td><input type="number" data-dn="${k}|${w}" value="${(c.dinh[k]||[])[w]??0}" style="width:54px;padding:5px"></td>`).join('')}</tr>`).join('')}</table></div>
+ ${ms.length?`<div class="warn">⚠ Thiếu doanh thu ${ms.length} ngày: ${ms.map(d=>pad(d)).join(', ')}</div>`:''}
+ <h2>1. Doanh thu và KPI ngày</h2><div class="kpi"><div>Tổng doanh thu<b>${vnd(sum('total'))}</b></div><div>Tiền mặt<b>${vnd(sum('cash'))}</b></div><div>Chuyển khoản<b>${vnd(sum('bank'))}</b></div><div>Chi két<b>${vnd(rows.reduce((a,r)=>a+kt(r),0))}</b></div><div>Chi cá nhân<b>${vnd(rows.reduce((a,r)=>a+cnv(r),0))}</b></div><div>Doanh thu - Chi<b>${vnd(sum('total')-sum('spend'))}</b></div><div>Tổng số bill<b>${fmt(sum('bills'))}</b></div><div>AOV<b>${vnd(sum('bills')?sum('total')/sum('bills'):0)}</b></div><div>Ngày đạt / không đạt<b>${ok} / <span class="${bad?'neg':''}">${bad}</span></b></div></div>
+ <div class="card"><b>Số ngày không đạt KPI theo thứ:</b><div class="wrap"><table><tr>${WD.map(w=>`<th>${w}</th>`).join('')}</tr><tr>${fail.map((f,i)=>`<td class="${f?'neg':''}">${f}/${cnt[i]}</td>`).join('')}</tr></table></div></div>
+ <div class="card wrap"><table><tr><th>Ngày</th><th class="r">Doanh thu</th><th class="r">So KPI</th><th>Kết quả</th><th class="r">Số bill</th><th class="r">AOV</th></tr>${dl.join('')||'<tr><td colspan="4" class="sub">Chưa có dữ liệu.</td></tr>'}</table></div>
+ <h2>2. Giờ làm: lịch xếp so với định biên</h2><div class="card wrap"><table><tr><th>Nhân viên</th><th class="r">Giờ theo lịch</th><th class="r">Trong đó OT</th></tr>${S.map((s,i)=>{if(s.x&&!H[i])return '';return `<tr><td>${s.n}${s.g==='QL'?' <span class="sub">(quản lý, không tính)</span>':''}</td><td class="r">${fmt(H[i])}</td><td class="r">${fmt(HO[i]||0)}</td></tr>`}).join('')}</table></div><div class="kpi"><div>Tổng giờ nhân viên (không tính quản lý)<b>${fmt(TH)} giờ</b></div><div>Trong đó OT<b>${fmt(HO.reduce((a,h,i)=>a+(S[i].g==='QL'?0:h||0),0))} giờ</b></div><div>Định biên (theo tháng)<b>${fmt(norm)} giờ</b></div><div>Chênh lệch<b class="${TD>0.05?'neg':TD<-0.05?'ok':''}">${(TD>0?'+':'')+fmt(TD)} giờ<br><span style="font-size:13px">${TS}</span></b></div></div><div class="card wrap" style="margin-top:10px"><b>Theo từng thứ trong tháng</b><table><tr><th>Thứ</th><th class="r">Số ngày</th><th class="r">Định biên</th><th class="r">Giờ xếp</th><th class="r">Chênh lệch</th></tr>${WD.map((w,k)=>{const a=nd[k]*dc[k],d=dh[k]-a;return `<tr><td>${w}</td><td class="r">${dc[k]}</td><td class="r">${fmt(a)}</td><td class="r">${fmt(dh[k])}</td><td class="r ${d>0.05?'neg':d<-0.05?'ok':''}">${d>0?'+':''}${fmt(d)}</td></tr>`}).join('')}</table></div><div class="sub">Định biên tháng = tổng định biên từng ngày theo đúng thứ trong tháng, nên tháng nhiều Thứ 7, Chủ nhật sẽ có định biên cao hơn. Vượt báo đỏ, thấp hơn báo xanh. Chỉ tính các tuần đã xếp ở tab Lịch ca.</div>
+ <h2>3. Sai phạm và điểm nhân sự</h2><div class="card wrap"><table><tr><th>Nhân viên</th><th class="r">Số lần sai phạm</th><th class="r">Biên bản</th><th class="r">Điểm trừ</th><th class="r">Điểm cuối</th></tr>${S.map(s=>{const p=o[s.n]||{cnt:0,bb:0,minus:0};if(s.x&&!p.cnt)return '';return `<tr><td>${s.n}</td><td class="r">${p.cnt}</td><td class="r ${p.bb?'neg':''}">${p.bb}</td><td class="r">${p.minus?'-'+p.minus:0}</td><td class="r"><b>${c.base-p.minus}</b></td></tr>`}).join('')}</table></div>
+ <div class="card wrap"><b>Lỗi sai phạm trong tháng</b><table><tr><th>Ngày</th><th>Nhân viên</th><th>Lỗi</th><th>Ghi chú</th></tr>${vr.map(v=>`<tr><td>${vd(v.date)}</td><td>${esc(v.name)}</td><td>${esc(v.err)}${v.bb?' <span class="neg">(biên bản)</span>':''}</td><td>${esc(v.note)}</td></tr>`).join('')||'<tr><td colspan="4" class="sub">Không có.</td></tr>'}</table></div>
+ <h2>4. Hàng hủy và hàng nhập</h2><div class="row"><div class="card"><b>Hủy nhiều nhất</b><br>${tl(topG('huy',month),0)}</div><div class="card"><b>Nhập nhiều nhất</b><br>${tl(topG('nhap',month),1)}</div><div class="card"><b>Tổng tiền hàng nhập</b><br><span style="font-size:20px;font-weight:700">${vnd(nh.reduce((a,v)=>a+(+v.amount||0),0))}</span><div class="sub">${nh.length} lần nhập</div></div></div>`}
+
+const EXP={},GL={PC:'Pha chế',PV:'Phục vụ',QL:'Quản lý'};
+const xp=(k,name,rows)=>{EXP[k]={name,rows};return `<button class="btn s g" data-x="${k}" style="margin:0 0 8px 8px">Xuất file</button>`};
+const toCsv=rows=>'\ufeffsep=,\r\n'+rows.map(r=>r.map(x=>{x=String(x??'');return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x}).join(',')).join('\r\n');
+function downloadBlob(filename, data, mime){
+  const blob = data instanceof Blob ? data : new Blob([data], {type: mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1500);
+}
+async function exp(name,rows){
+  const csvSave=()=>downloadBlob(name+'.csv', toCsv(rows), 'text/csv;charset=utf-8;');
+  if(!window.XLSX)return csvSave();
+  try{
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Sheet1');
+    const buf=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+    downloadBlob(name+'.xlsx', buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  }catch(e){csvSave()}
+}
+async function expSch(){
+  const e0=EXP.sch;
+  if(!window.ExcelJS)return exp(e0.name,e0.rows);
+  const days=[...Array(7)].map((_,k)=>{const d=new Date(week+'T00:00');d.setDate(d.getDate()+k);return d}),P=days.map((_,k)=>pos(k)),V=S.map((s,i)=>i).filter(i=>!(S[i].x&&!days.some((_,k)=>full(i,k))));
+  const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet('Lịch làm tuần',{views:[{showGridLines:false}],pageSetup:{orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:1,horizontalCentered:true}});
+  ws.columns=[{width:22},...WD.map(()=>({width:18}))];
+  const F=c=>({type:'pattern',pattern:'solid',fgColor:{argb:'FF'+c}}),B={style:'thin',color:{argb:'FFBFBFBF'}},bd={top:B,left:B,bottom:B,right:B},ct={horizontal:'center',vertical:'middle',wrapText:true},FN=(c,b)=>({name:'Calibri',size:11,bold:b,color:{argb:'FF'+c}}),TH=['THỨ 2','THỨ 3','THỨ 4','THỨ 5','THỨ 6','THỨ 7','CHỦ NHẬT'];
+  ws.mergeCells('A1:H1');const t=ws.getCell('A1');t.value=e0.rows[0][0];t.font={name:'Calibri',size:16,bold:true,color:{argb:'FFFFFFFF'}};t.fill=F('1F4E79');t.alignment=ct;ws.getRow(1).height=38;
+  const hd=(r,lab)=>{const row=ws.getRow(r);row.height=34;[lab,...days.map((d,k)=>TH[k]+'\n'+pad(d.getDate())+'/'+pad(d.getMonth()+1))].forEach((v,c)=>{const x=row.getCell(c+1);x.value=v;x.font=FN('FFFFFF',true);x.fill=F('2F75B5');x.alignment=ct;x.border=bd})};
+  const nm=(x,n,z)=>{x.value=n;x.font=FN('1F3864',true);x.fill=F(z?'DDEBF7':'F2F7FC');x.alignment={vertical:'middle',indent:1};x.border=bd};
+  let r=3;hd(r++,'CA LÀM');
+  V.forEach((i,n)=>{const row=ws.getRow(r++);row.height=30;nm(row.getCell(1),S[i].n,n%2);days.forEach((_,k)=>{const v=full(i,k),u=v.toUpperCase(),x=row.getCell(k+2);x.value=v;x.alignment=ct;x.border=bd;x.font=FN(u==='NGHỈ'?'7F7F7F':'1F3864',!!v);x.fill=F(!v?(n%2?'F2F7FC':'FFFFFF'):u==='NGHỈ'?'EDEDED':/OT|&/.test(u)?'FCE4D6':LEG[u]?(u.includes('GÃY')?'DDEBF7':'BDD7EE'):'FCE4D6')})});
+  r++;hd(r++,'VỊ TRÍ');
+  const PC={'PC & TN':['1F4E79','FFFFFF'],PC:['2F75B5','FFFFFF'],PV:['9DC3E6','1F3864'],QL:['7F7F7F','FFFFFF']};
+  V.forEach((i,n)=>{const row=ws.getRow(r++);row.height=26;nm(row.getCell(1),S[i].n,n%2);days.forEach((_,k)=>{const p=P[k][i],x=row.getCell(k+2),cl=PC[p];x.value=p||'';x.alignment=ct;x.border=bd;x.font=FN(cl?cl[1]:'1F3864',true);x.fill=F(cl?cl[0]:(n%2?'F2F7FC':'FFFFFF'))})});
+  const buf=await wb.xlsx.writeBuffer();
+  downloadBlob(e0.name+'.xlsx', buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+}
+
+function stHTML(){if(!mgr)return '<div class="card sub">Chỉ quản lý được sửa danh sách nhân sự.</div>';const go_=Object.entries(GL).map(([k,v])=>[k,v]);
+ return `<div class="card"><h2 style="margin-top:0">Thêm nhân sự mới</h2><div class="row"><div><label>Tên</label><input id="sn"></div><div><label>Nhóm</label><select id="sg">${go_.map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div><div><label>Chức danh</label><input id="stt" placeholder="PC, PV, Trưởng ca..."></div></div><button class="btn" id="ssave">Thêm</button><div class="err" id="err"></div></div>
+ <div class="card wrap"><table><tr><th>Tên</th><th>Nhóm</th><th>Chức danh</th><th>Trạng thái</th></tr>${S.map(s=>`<tr data-sr="${s.id}" draggable="true" style="cursor:grab"><td>⋮⋮ ${esc(s.n)} <button class="btn s g" data-mv="${s.id}|-1">▲</button><button class="btn s g" data-mv="${s.id}|1">▼</button></td><td><select data-sf="${s.id}|g">${go_.map(([k,v])=>`<option value="${k}" ${s.g===k?'selected':''}>${v}</option>`).join('')}</select></td><td><input data-sf="${s.id}|t" value="${esc(s.t)}"></td><td>${s.x?'<span class="neg">Đã nghỉ</span>':'<span class="ok">Đang làm</span>'} <button class="btn s ${s.x?'':'g'}" data-sx="${s.id}">${s.x?'Đi làm lại':'Nghỉ việc'}</button> <button class="btn s g" data-sd="${s.id}">Xóa</button></td></tr>`).join('')}</table></div><div class="sub">Kéo thả dòng (hoặc bấm ▲ ▼ trên điện thoại) để sắp xếp thứ tự. Nhân sự mới thêm xong có ngay trong Lịch ca. Người nghỉ việc bị ẩn khỏi lịch ca và danh sách sai phạm, giờ làm và điểm của các tháng cũ vẫn giữ trong báo cáo.</div>`}
+
+const HTMLS={rev:revHTML,sch:schedHTML,huy:()=>gdHTML('huy'),nhap:()=>gdHTML('nhap'),st:stHTML,vi:viHTML,rep:repHTML,ngl:nglHTML,ac:acHTML};
+function draw(force){
+  if(!meId)return;
+  const V=vis();if(V.length&&!V.some(([k])=>k===tab))tab=V[0][0];
+  $('#nav').innerHTML=V.map(([k,n])=>`<button data-t="${k}" class="${k===tab?'on':''}">${n}</button>`).join('');
+  $('#mt').value=month;const cur=today.slice(0,7);$('#mbd').textContent=month<cur?'📁 Đang xem tháng cũ':month>cur?'Tháng sau':'Tháng này';
+  if(!V.length){$('#app').innerHTML='<div class="card"><b>Chưa được cấp quyền.</b><div class="sub">Yêu cầu truy cập đã gửi cho chủ quán, vui lòng chờ duyệt.</div></div>';return}
+  if(!force&&document.activeElement?.closest&&document.activeElement.closest('#app')&&/INPUT|SELECT/.test(document.activeElement.tagName))return;
+  const lv=perm(tab),h=HTMLS[tab]()+'<!--'+lv+'-->';
+  if($('#app').dataset.h!==h){$('#app').innerHTML=h.replace(/<!--\d-->$/,'');$('#app').dataset.h=h;if(lv<2&&!['ngl','st','ac'].includes(tab))ro();if(!mgr)$('#app').querySelectorAll('#ck,[data-dn]').forEach(e=>e.disabled=true)}
+}
+const go=()=>{$('#app').dataset.h='';draw(true)};
+
+document.addEventListener('click',async e=>{
+  const t=e.target.closest('button');if(!t)return;
+  if(t.id==='btn-google'){
+    $('#auth-err').textContent='';
+    try{await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())}
+    catch(err){$('#auth-err').textContent='Lỗi đăng nhập: '+(err.message||err.code)}
+    return;
+  }
+  if(t.id==='btn-logout'){await auth.signOut();location.reload();return;}
+  if(t.id==='mp'||t.id==='mn'){month=shiftM(month,t.id==='mp'?-1:1);return go()}
+  if(t.id==='mnew'){month=today.slice(0,7);week=mon(new Date());return go()}
+  if(t.dataset.spadd){$('#spl').insertAdjacentHTML('beforeend',spRow());return}
+  if(t.dataset.spdel){const p=t.closest('.sp');if($('#spl').children.length>1)p.remove();else p.querySelectorAll('input').forEach(i=>i.value='');spTot();return}
+  if(t.id==='ngsave'){const g=val('ngg'),n=val('ngn');if(!g||!n)return showErr(['Nhập nhóm và tên nguyên liệu']);const C=JSON.parse(JSON.stringify(CATV()));C[g]=C[g]||[];if(C[g].some(x=>x.toLowerCase()===n.toLowerCase()))return showErr(['Nguyên liệu này đã có trong nhóm']);C[g].push(n);await put('cfg','main',{...cfg(),cat:C});return go()}
+  if(t.dataset.ngd){const[g,i]=t.dataset.ngd.split('|'),C=JSON.parse(JSON.stringify(CATV()));if(confirm('Xóa nguyên liệu '+C[g][+i]+'?')){C[g].splice(+i,1);await put('cfg','main',{...cfg(),cat:C});go()}return}
+  if(t.dataset.ngdg){if(confirm('Xóa cả nhóm '+t.dataset.ngdg+'?')){const C=JSON.parse(JSON.stringify(CATV()));delete C[t.dataset.ngdg];await put('cfg','main',{...cfg(),cat:C});go()}return}
+  if(t.dataset.mv){const[id,d]=t.dataset.mv.split('|'),a=S.slice(),i=a.findIndex(x=>x.id===id),j=i+ +d;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];await put('cfg','main',{...cfg(),staff:a});return go()}
+  if(t.dataset.aca){const id=t.dataset.aca;if(!acct().some(a=>a.id===id))await put('cfg','main',{...cfg(),acct:[...acct(),{id,l:D.req[id]?.name||'',p:{...TPL}}]});if(D.req[id]){delete D.req[id];await db.collection('req').doc(id).delete()}return go()}
+  if(t.dataset.acx){const id=t.dataset.acx;delete D.req[id];await db.collection('req').doc(id).delete();return go()}
+  if(t.dataset.pc){const[id,k]=t.dataset.pc.split('|'),mx=k==='ngl'?1:2;await put('cfg','main',{...cfg(),acct:acct().map(a=>a.id===id?{...a,p:{...(a.p||{}),[k]:((+(a.p||{})[k]||0)+1)%(mx+1)}}:a)});return go()}
+  if(t.dataset.acd){if(confirm('Xóa tài khoản này khỏi danh sách phân quyền?')){await put('cfg','main',{...cfg(),acct:acct().filter(a=>a.id!==t.dataset.acd)});go()}return}
+  if(t.dataset.opt){const o=D.cfg.main?.open;await put('cfg','main',{...cfg(),open:o===false?{...TPLO}:false});return go()}
+  if(t.dataset.ocy){const k=t.dataset.ocy,o={...(D.cfg.main?.open||TPLO)},mx=k==='ngl'?1:2;o[k]=((+o[k]||0)+1)%(mx+1);await put('cfg','main',{...cfg(),open:o});return go()}
+  if(t.dataset.t){tab=t.dataset.t;return go()}
+  if(t.dataset.del){if(confirm('Xóa dòng này?')){const[c,id]=t.dataset.del.split('|');await del(c,id);go()}return}
+  if(t.dataset.st){const v=D.goods[t.dataset.st];await put('goods',t.dataset.st,{...v,status:v.status==='Đã nhập'?'Chưa nhập':'Đã nhập'});return go()}
+  if(t.dataset.xadd||t.dataset.xdel){const[i,k]=(t.dataset.xadd||t.dataset.xdel).split('|'),c={...(D.sched[week]?.cells||{})},key=S[+i].id+'_'+k+'x';if(t.dataset.xadd)c[key]=' - ';else delete c[key];await put('sched',week,{cells:c});return go()}
+  if(t.dataset.x==='sch')return expSch();
+  if(t.dataset.x){const e2=EXP[t.dataset.x];return exp(e2.name,e2.rows)}
+  if(t.id==='ssave'){const n=val('sn');if(!n)return showErr(['Thiếu tên nhân sự']);if(S.some(s=>s.n.toLowerCase()===n.toLowerCase()))return showErr(['Tên này đã có trong danh sách']);const g=$('#sg').value;await put('cfg','main',{...cfg(),staff:[...S,{id:'s'+Date.now().toString(36),n,g,t:val('stt')||GL[g]}]});return go()}
+  if(t.dataset.sd){const s=S.find(x=>x.id===t.dataset.sd);if(s&&confirm('Xóa hẳn '+s.n+' khỏi danh sách?\nLịch ca và giờ làm của người này sẽ không còn hiện trong báo cáo. Nếu chỉ nghỉ việc thì nên bấm Nghỉ việc để giữ lịch sử.')){if(S.length<=1)return alert('Phải còn ít nhất 1 nhân sự');await put('cfg','main',{...cfg(),staff:S.filter(x=>x.id!==s.id)});go()}return}
+  if(t.dataset.sx){await put('cfg','main',{...cfg(),staff:S.map(s=>s.id===t.dataset.sx?{...s,x:s.x?0:1}:s)});return go()}
+  if(t.id==='rsave'){const L=[],g=id=>$('#'+id).value;if(!g('rd'))L.push('Thiếu ngày');[['rt','tổng doanh thu'],['rbl','số bill'],['rc','tiền mặt'],['rb','chuyển khoản']].forEach(([i,n])=>{if(g(i)==='')L.push('Thiếu '+n)});const items=[...document.querySelectorAll('#spl .sp')].map(p=>({r:p.querySelector('.sr').value.trim(),a:+p.querySelector('.sa').value||0,s:p.querySelector('.ss').value})).filter(x=>x.r||x.a);if(items.some(x=>x.a>0&&!x.r))L.push('Mỗi khoản chi phải có lý do');if(items.some(x=>x.r&&!(x.a>0)))L.push('Mỗi khoản chi phải có số tiền');
+   if(L.length)return showErr(['Chưa nhập đủ:',...L]);const d=g('rd');await put('revenue',d,{date:d,total:+g('rt'),bills:+g('rbl'),cash:+g('rc'),bank:+g('rb'),spend:items.reduce((a,x)=>a+x.a,0),items});return go()}
+  if(t.id==='gsave'){const nh=tab==='nhap',L=[];if(!val('gd'))L.push('Thiếu ngày');if(!gname())L.push('Thiếu tên sản phẩm');if(!(+val('gq')>0))L.push('Thiếu số lượng');if(nh){if(!val('gs'))L.push('Thiếu nhà cung cấp');if(!(+val('ga')>0))L.push('Thiếu số tiền nhập')}else if(!val('gr'))L.push('Thiếu lý do hủy');
+   if(L.length)return showErr(['Chưa nhập đủ:',...L]);await put('goods',Date.now().toString(36),{type:tab,date:val('gd'),name:gname(),grp:$('#gg').value,qty:+val('gq'),unit:$('#gu').value,status:'Chưa nhập',...(nh?{supplier:val('gs'),amount:+val('ga')}:{reason:val('gr')})});return go()}
+  if(t.id==='vsave'){if(!val('vd'))return showErr(['Thiếu ngày']);await put('viol',Date.now().toString(36),{date:val('vd'),name:$('#vn').value,err:$('#ve').value,note:val('vt')});return go()}
+});
+
+document.addEventListener('input',e=>{const p=e.target.nextElementSibling;if(p&&p.classList.contains('pv'))p.textContent=e.target.value?vnd(e.target.value):''});
+document.addEventListener('input',e=>{if(e.target.closest&&e.target.closest('#spl'))spTot()});
+let dragId=null;
+document.addEventListener('dragstart',e=>{const r=e.target.closest&&e.target.closest('tr[data-sr]');if(r){dragId=r.dataset.sr;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',dragId)}catch(_){}}});
+document.addEventListener('dragover',e=>{if(e.target.closest&&e.target.closest('tr[data-sr]'))e.preventDefault()});
+document.addEventListener('drop',async e=>{const r=e.target.closest&&e.target.closest('tr[data-sr]');if(!r||!dragId||r.dataset.sr===dragId)return;e.preventDefault();const a=S.slice(),f=a.findIndex(x=>x.id===dragId),ti=a.findIndex(x=>x.id===r.dataset.sr),[m]=a.splice(f,1);a.splice(ti,0,m);dragId=null;await put('cfg','main',{...cfg(),staff:a});go()});
+document.addEventListener('change',async e=>{const t=e.target;
+ if(t.id==='mo'||t.id==='mt'){month=t.value||month;go()}
+ if(t.dataset.al){await put('cfg','main',{...cfg(),acct:acct().map(a=>a.id===t.dataset.al?{...a,l:t.value.trim()}:a)});go()}
+ if(t.id==='wk'){week=mon(t.value);go()}
+ if(t.id==='gg'){$('#gn').innerHTML=prodOpts(t.value);$('#gk').style.display=$('#gn').value==='__k'?'block':'none'}
+ if(t.id==='gn'){$('#gk').style.display=t.value==='__k'?'block':'none';const m=t.value.match(/\((KG|HỘP|CHAI|BỊCH)/);if(m)$('#gu').value={KG:'kg','HỘP':'hộp',CHAI:'chai','BỊCH':'bịch'}[m[1]]}
+ if(t.dataset.ti){const[i,k]=t.dataset.ti.split('|'),p=t.parentElement.querySelectorAll('input'),c={...(D.sched[week]?.cells||{})};c[S[+i].id+'_'+k+'x']=p[0].value+' - '+p[1].value;await put('sched',week,{cells:c});go()}
+ if(t.dataset.sf){const[id,f]=t.dataset.sf.split('|');await put('cfg','main',{...cfg(),staff:S.map(s=>s.id===id?{...s,[f]:t.value.trim()}:s)});go()}
+ if(t.id==='ck'){const c=cfg();await put('cfg','main',{...c,kpi:+t.value||0});go()}
+ if(t.dataset.dn){const c=cfg(),[k,w]=t.dataset.dn.split('|'),a=[...(c.dinh[k]||Array(7).fill(0))];a[+w]=Math.max(0,+t.value||0);await put('cfg','main',{...c,dinh:{...c.dinh,[k]:a}});go()}
+ if(t.dataset.i!==undefined){const c={...(D.sched[week]?.cells||{})};c[S[+t.dataset.i].id+'_'+t.dataset.k]=t.value.trim();await put('sched',week,{cells:c});go()}
+});
+
+let listenersStarted = false;
+auth.onAuthStateChanged(async user => {
+  if(!user){
+    meId = null;
+    $('#auth-gate').style.display = 'block';
+    $('#main-app').style.display = 'none';
+    $('#user-panel').innerHTML = '';
+    $('#st').textContent = 'Vui lòng đăng nhập để dùng hệ thống.';
+    return;
+  }
+  meId = user.uid;
+  meEmail = (user.email || '').toLowerCase();
+  meName = user.displayName || meEmail || user.uid;
+  PROF[meId] = {name: meName};
+
+  // Nếu chưa có ai là chủ quán trong cfg.main.ownerUid, người đầu tiên đăng nhập có email khớp OWNER_EMAILS hoặc chưa có owner sẽ tự nhận quyền chủ quán
+  const mainDoc = await db.collection('cfg').doc('main').get();
+  const mainData = mainDoc.exists ? mainDoc.data() : {};
+  if(OWNER_EMAILS.map(x=>x.toLowerCase()).includes(meEmail)){
+    mgr = true;
+    if(mainData.ownerUid !== meId){
+      await db.collection('cfg').doc('main').set({...mainData, ownerUid: meId}, {merge: true});
+    }
+  } else if(!mainData.ownerUid && !OWNER_EMAILS.length){
+    mgr = true;
+    await db.collection('cfg').doc('main').set({...mainData, ownerUid: meId}, {merge: true});
+  } else {
+    mgr = (mainData.ownerUid === meId);
+  }
+
+  $('#auth-gate').style.display = 'none';
+  $('#main-app').style.display = 'block';
+  $('#user-panel').innerHTML = `<span class="sub">${esc(meName)}</span> <button class="btn s g" id="btn-logout">Đăng xuất</button>`;
+
+  if(!listenersStarted){
+    listenersStarted = true;
+    ['revenue','goods','sched','viol','cfg','req'].forEach(c=>{
+      db.collection(c).onSnapshot(s=>{
+        D[c]={};
+        s.docs.forEach(d=>D[c][d.id]=d.data());
+        syncS();
+        if(c==='cfg'&&D.cfg.main?.ownerUid===meId)mgr=true;
+        if(c==='cfg'&&!mgr&&meId&&!reqSent&&!acct().some(a=>a.id===meId)){
+          reqSent=1;
+          db.collection('req').doc(meId).set({t:Date.now(),name:meName,email:meEmail}).catch(()=>{});
+        }
+        $('#st').textContent='Dữ liệu dùng chung, mọi người thấy dữ liệu của nhau trực tiếp. '+(mgr?'Bạn có quyền quản lý (xác nhận, xóa, cài đặt).':'Bạn đang ở chế độ phân quyền tài khoản.');
+        draw();
+      });
+    });
+  }
+  draw(true);
+});
+</script></body></html>
